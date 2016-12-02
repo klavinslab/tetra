@@ -1,5 +1,5 @@
-# Tetra
-Tetra: Time Estimation Tool For Aquarium
+# TETRA
+TETRA: Time Estimation Tool For Aquarium
 
 ## How to use
 
