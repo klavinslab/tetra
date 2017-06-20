@@ -8,4 +8,4 @@
 /data
 
 # Ignore generated files
-data_summary.rb
+data_summary.csv
