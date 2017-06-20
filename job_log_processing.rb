@@ -63,13 +63,20 @@ def time_size_report resp
   file_name = resp[:path].split('/').last.split('.').first
   if FILE_LIST.include? file_name
     puts resp[:id]
-    if ["get_primer","order_primer"].include? file_name
-      size = resp[:backtrace][-1][:rval][:io_hash][:primer_ids].length
-    elsif resp[:backtrace][-1][:rval].is_a? Array
-      size = resp[:backtrace][-1][:rval].length
-    else
-      size = resp[:backtrace][-1][:rval][:io_hash][:size]
+    begin
+      if ["get_primer","order_primer"].include? file_name
+        size = resp[:backtrace][-1][:rval][:io_hash][:primer_ids].length
+      elsif resp[:backtrace][-1][:rval].is_a? Array
+        size = resp[:backtrace][-1][:rval].length
+      elsif resp[:backtrace][-1][:rval][:io_hash][:size]
+        size = resp[:backtrace][-1][:rval][:io_hash][:size]
+      else
+        size = 1
+      end
+    rescue
+      return
     end
+
     data_file = File.open("data/#{file_name}.csv", "a")
     time_size_data_processing(resp, data_file, 20, size)
     data_file.close
@@ -77,16 +84,11 @@ def time_size_report resp
 
 end
 
-FILE_LIST = %w[order_primer get_primer PCR pour_gel run_gel cut_gel purify_gel
-  gibson ecoli_transformation plate_ecoli_transformation image_plate start_overnight_plate miniprep sequencing upload_sequencing_results glycerol_stock streak_yeast_plate overnight_suspension_collection inoculate_large_volume_growth make_yeast_competent_cell digest_plasmid_yeast_transformation make_antibiotic_plate yeast_transformation plate_yeast_transformation make_yeast_lysate yeast_colony_PCR yeast_mating overnight_suspension discard_item fragment_analyzing cytometer_reading overnight_suspension_divided_plate_to_deepwell dilute_yeast_culture_deepwell_plate]
+# start timing
+start_time = Time.now
 
-FILE_LIST.each do |file_name|
-  data_file_init = File.open("data/#{file_name}.csv", "w")
-  data_file_init.write("job_id,size,duration,ajusted_duration,max_time_interval,user_id,user_name\n")
-  data_file_init.close
-end
-
-response = Test.send({
+# make hash (user id -> user name)
+user_data = Test.send({
       login: Test.login,
       key: Test.key,
       run: {
@@ -97,33 +99,58 @@ response = Test.send({
       }
     })
 USER_ID_NAME = {}
-response[:rows].each do |user|
+user_data[:rows].each do |user|
   USER_ID_NAME[user[:id]] = user[:name]
 end
 
-lower_bound_id = 27490
-upper_bound_id = 34485
-# 16317
+# array of protocol names
+FILE_LIST = ["make_50_percent_peg", "make_50_percent_glycerol", "make_FCC", "bacteria_media", "yeast_media_ypad", "yeast_media_sdo_sc", "pour_agar_LB",
+             "pour_agar_YPAD_SDO", "move_agar_plates", "make_gibson_aliquots", "make_5x_iso_buffer", "make_media_electrocompetent_ecoli_comp_cells", 
+             "start_overnight_electrocompetent_ecoli_comp_cells", "inoculate_electrcompetent_ecoli_comp_cells", "check_OD_electrocompetent_ecoli_comp_cells",
+             "chill_electrocompetent_ecoli_comp_cells", "first_spin_water_wash_electrocompetent_ecoli_comp_cells", 
+             "first_glycerol_wash_electrocompetent_ecoli_comp_cells", "second_glycerol_wash_electrocompetent_ecoli_comp_cells",
+             "aliquot_electrocompetent_ecoli_comp_cells", "order_primer", "get_primer", "PCR", "pour_gel", "run_gel", "cut_gel", "purify_gel", "gibson", 
+             "ecoli_transformation", "plate_ecoli_transformation", "image_plate", "golden_gate", "start_overnight_plate", "miniprep", "sequencing", 
+             "upload_sequencing_results", "restriction_digest", "plate_midiprep", "small_inoculation_midiprep", "large_inoculation_midiprep", "midiprep",
+             "start_overnight_glycerol_stock", "maxiprep", "agro_transformation", "plate_agro_transformation", "discard_item", "glycerol_stock",
+             "streak_yeast_plate", "overnight_suspension_collection", "inoculate_large_volume_growth", "make_yeast_competent_cell", 
+             "digest_plasmid_yeast_transformation", "make_antibiotic_plate", "yeast_transformation", "plate_yeast_transformation", "make_yeast_lysate",
+             "yeast_colony_PCR", "fragment_analyzing", "overnight_suspension", "yeast_mating", "make_yeast_plate", "overnight_suspension_divided_plate_to_deepwell", 
+             "dilute_yeast_culture_deepwell_plate", "cytometer_reading", "golden_gate", "ecoli_transformation_stripwell", "make_ecoli_lysate",
+             "move_analyzer_cartridge", "ecoli_colony_PCR", "fragment_analyzing_ecoli"]
 
-(lower_bound_id..upper_bound_id).each do |id|
-  response = Test.send({
-      login: Test.login,
-      key: Test.key,
-      run: {
-        method: "find",
-        args: {
-          model: :job,
-          where: { id: id }
-        }
-      }
-    })
-  # puts response
-  if response[:rows].length == 0
-    break
-  end
-  if response[:rows].length > 0
-    if response[:rows][0][:path][-2..-1] == 'rb' && response[:rows][0][:group_id] == 55 && response[:rows][0][:backtrace][-1][:operation] == "complete"
-      time_size_report response[:rows][0]
-    end
+# set file headings
+FILE_LIST.each do |file_name|
+  data_file_init = File.open("data/#{file_name}.csv", "w")
+  data_file_init.write("job_id,size,duration,ajusted_duration,max_time_interval,user_id,user_name\n")
+  data_file_init.close
+end
+
+# generate reports for all jobs within range
+lower_bound_id = 28096
+upper_bound_id = 41644
+
+job_data = Test.send({
+  login: Test.login,
+  key: Test.key,
+  run: {
+    method: "find",
+    args: {
+      model: :job,
+      where: { id: (lower_bound_id..upper_bound_id).to_a }
+    }
+  }
+})
+
+(lower_bound_id..upper_bound_id).each_with_index do |id, idx|
+  log = job_data[:rows][idx]
+
+  break unless log
+  
+  if log[:path][-2..-1] == 'rb' && log[:group_id] == 55 && log[:backtrace][-1][:operation] == "complete"
+    time_size_report log
   end
 end
+
+puts "\n\n--- All done! Thanks for using TETRA. :) ---"
+puts "    #{upper_bound_id - lower_bound_id} jobs processed in #{(Time.now - start_time)} s\n\n"
