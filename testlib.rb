@@ -4,15 +4,15 @@ require 'json'
 module Test
 
   def self.login
-    "yang"
+    "user-login"
   end
 
   def self.key
-   "Xqebo0lhbQ_grN8l9ZlEF1rC_bDIsyqfh74pOgwcNzQ"
+   "key-text"
   end
 
   def self.send data
-    uri = URI('http://54.68.9.194:81/api')
+    uri = URI('http://localhost:81/api')
     http = Net::HTTP.new(uri.host,uri.port)
     req = Net::HTTP::Post.new(uri.path, initheader = {'Content-Type' =>'application/json'})
     req.body = data.to_json
